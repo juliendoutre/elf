@@ -5,20 +5,19 @@ import * as elfy from 'elfy';
 export class TreeProvider implements vscode.TreeDataProvider<Header> {
     elf: any;
     uri: vscode.Uri;
+    strings = [];
 
     getTreeItem = (element: Header): vscode.TreeItem => element;
 
-    getChildren = (element?: Header | Section | Program): Thenable<Header[]> => {
+    getChildren = (element?: Header | Section | Program | String): Thenable<Header[]> => {
         if (this.uri && this.elf) {
             if (element) {
                 if (element instanceof ProgramsHeader) {
                     return Promise.resolve(this.elf.body.programs.map((_, index) => new Program(this.uri, index)));
                 } else if (element instanceof SectionsHeader) {
                     return Promise.resolve(this.elf.body.sections.map((section, index) => new Section(this.uri, index, section.name)));
-                } else if (element instanceof Program) {
-                    return Promise.resolve([]);
-                } else if (element instanceof Section) {
-                    return Promise.resolve([]);
+                } else if (element instanceof StringsHeader) {
+                    return Promise.resolve(this.strings.map((string) => new String(string)));
                 } else {
                     return Promise.resolve([]);
                 }
@@ -27,6 +26,7 @@ export class TreeProvider implements vscode.TreeDataProvider<Header> {
                     new FileHeader(this.uri),
                     new ProgramsHeader(),
                     new SectionsHeader(),
+                    new StringsHeader(),
                 ]);
             }
         } else {
@@ -49,6 +49,14 @@ export class TreeProvider implements vscode.TreeDataProvider<Header> {
 
             this.uri = input.uri;
             this.elf = elfy.parse(fs.readFileSync(this.uri.fsPath));
+
+            this.strings = [];
+            this.elf.body.sections.filter((section) => section.type == 'strtab' || section.type == 'dynstr').forEach((section) => {
+                section.data.toString().split('\0').forEach((string) => {
+                    this.strings.push(string);
+                })
+            });
+
             this._onDidChangeTreeData.fire();
 
             if (openFileHeadePanel) {
@@ -58,7 +66,7 @@ export class TreeProvider implements vscode.TreeDataProvider<Header> {
     }
 }
 
-type Header = FileHeader | ProgramsHeader | SectionsHeader;
+type Header = FileHeader | ProgramsHeader | SectionsHeader | StringsHeader;
 
 class FileHeader extends vscode.TreeItem {
     constructor(uri: vscode.Uri) {
@@ -90,5 +98,17 @@ class Section extends vscode.TreeItem {
     constructor(uri: vscode.Uri, id: number, name: string) {
         super(name, vscode.TreeItemCollapsibleState.None);
         this.command = { title: 'inspect', command: 'elfReader.inspectSection', arguments: [uri.fsPath, id] };
+    }
+}
+
+class StringsHeader extends vscode.TreeItem {
+    constructor() {
+        super('strings', vscode.TreeItemCollapsibleState.Collapsed);
+    }
+}
+
+class String extends vscode.TreeItem {
+    constructor(name: string) {
+        super(name, vscode.TreeItemCollapsibleState.None);
     }
 }
